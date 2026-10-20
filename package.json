@@ -33,7 +33,7 @@
     "access": "public"
   },
   "scripts": {
-    "test": "node test/pi-purge.test.mjs"
+    "test": "node test/pi-purge.test.mjs && node test/pi-purge-env-source.test.mjs"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.80.0 <2"

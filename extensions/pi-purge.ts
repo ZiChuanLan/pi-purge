@@ -38,12 +38,18 @@ const EMBEDDED = "embedded";
 /** 常见的外部人设位置，仅在用户显式切换时使用。 */
 const HINT_SOURCE = join(homedir(), ".dsh", "prompt-inject.md");
 
+/**
+ * 默认源的初始值：由 PI_PURGE_SOURCE 显式指定绝对路径，未设置时保持内嵌示例。
+ * 只读一次、不落盘、不自动探测；进程内的 `/purge source` 仍然覆盖它。
+ */
+const ENV_SOURCE = process.env.PI_PURGE_SOURCE?.trim() || "";
+
 type Mode = "strict" | "replace" | "append";
 
 // 会话级状态：只活在内存里，pi 退出即失，绝不跨会话 / 跨进程泄漏
 let enabled = false;
 let mode: Mode = "strict";
-let source = EMBEDDED;
+let source = ENV_SOURCE || EMBEDDED;
 let body = EMBEDDED_PERSONA;
 let loadError = "";
 // 上一轮实际切除情况，/purge status 用它回答"到底生效了没有"

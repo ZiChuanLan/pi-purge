@@ -59,6 +59,15 @@ Tool schemas are passed through the API `tools` parameter rather than the system
 - Scope is the session. Every `session_start` — startup, `new`, `resume`, `reload` — begins **disabled**. Quitting pi always returns to stock behavior.
 - Nothing is written to disk: there is no state file, no cache, no marker. Two pi processes cannot affect each other.
 - The default prompt is the short example bundled inside `extensions/pi-purge.ts`. `/purge source <path>` points at your own file; `/purge source embedded` comes back.
+- To start every process with your own file without writing any state, set `PI_PURGE_SOURCE` to an absolute path:
+
+    ```bash
+    PI_PURGE_SOURCE=/home/me/persona.md pi          # macOS / Linux
+    set PI_PURGE_SOURCE=C:/prompts/persona.md        # Windows cmd
+    $env:PI_PURGE_SOURCE='C:/prompts/persona.md'     # Windows PowerShell
+    ```
+
+    It only supplies the initial value of `source`: `/purge on` is still required, `enabled` still begins `false` on every `session_start`, and `/purge source <path>` in a session overrides it. If the file is missing, `/purge on` reports the error instead of silently falling back to the bundled example.
 - The bundled text is deliberately minimal. Published packages are scanned for abusive prompt content, so a full custom persona does not survive publishing; keep your own prompt on disk and reference it with `/purge source`.
 - The default mode is `strict`.
 
@@ -80,7 +89,7 @@ Tool schemas are passed through the API `tools` parameter rather than the system
 ## Development
 
 ```bash
-npm test   # 9 assertion groups; runs against a temporary agent dir and asserts nothing is written
+npm test   # two suites; both run against temporary agent dirs and assert nothing is written
 ```
 
 The extension registers one `before_agent_start` hook, one `session_start` hook, and a `/purge` command. No other hooks, no background work, no file writes.

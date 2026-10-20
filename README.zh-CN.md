@@ -59,6 +59,15 @@
 - 作用范围是**会话**。每次 `session_start`（启动 / 新建 / `resume` / 重载）都从**关闭**开始；退出 pi 一定回到原始提示词。
 - **不写任何文件**：没有状态文件、没有缓存、没有标记。两个 pi 进程互不影响。
 - 默认提示词是 `extensions/pi-purge.ts` 里的一小段示例；`/purge source <路径>` 换成自己的文件，`/purge source embedded` 切回来。
+- 想不落盘就让每次启动都指向自己的文件，把 `PI_PURGE_SOURCE` 设成绝对路径：
+
+    ```bash
+    PI_PURGE_SOURCE=/home/me/persona.md pi          # macOS / Linux
+    set PI_PURGE_SOURCE=C:/prompts/persona.md        # Windows cmd
+    $env:PI_PURGE_SOURCE='C:/prompts/persona.md'     # Windows PowerShell
+    ```
+
+    它只提供 `source` 的初始值：仍然要 `/purge on`，每次 `session_start` 的 `enabled` 仍然是 `false`，会话里的 `/purge source <路径>` 也仍然优先。文件不存在时 `/purge on` 会报错，而不是静默回退到内嵌示例。
 - 内置文本故意写得很短：发布到包仓库的内容会被扫描滥用性提示词，完整的人设文本过不了扫描；把自己的提示词放在本地用 `/purge source` 引用。
 - 默认模式 `strict`。
 
@@ -80,7 +89,7 @@
 ## 开发
 
 ```bash
-npm test   # 9 组断言，跑在临时 agent 目录里，并断言全程没有写任何文件
+npm test   # 两个套件，均跑在临时 agent 目录里，并断言全程没有写任何文件
 ```
 
 实现上只注册一个 `before_agent_start` 钩子、一个 `session_start` 钩子和一个 `/purge` 命令，无其他钩子、无后台任务、无文件写入。
