@@ -1,8 +1,13 @@
 {
   "name": "pi-purge",
   "version": "0.2.3",
-  "description": "pi extension: switch a session between pi's stock system prompt, a trimmed variant, and a bundled or custom persona prompt - for prompt-engineering experiments",
+  "description": "opencode v2 plugin: switch a session between opencode's stock system prompt, a trimmed variant, and a bundled or custom persona prompt - for prompt-engineering experiments",
   "type": "module",
+  "main": "./index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./server": "./index.ts"
+  },
   "license": "MIT",
   "author": "ZiChuanLan",
   "repository": {
@@ -14,16 +19,15 @@
     "url": "https://github.com/ZiChuanLan/pi-purge/issues"
   },
   "keywords": [
-    "pi-package",
-    "pi-extension",
-    "pi-coding-agent",
-    "pi",
+    "opencode",
+    "opencode-plugin",
+    "opencode-v2",
     "system-prompt",
     "prompt-engineering",
     "prompt-evaluation"
   ],
   "files": [
-    "extensions",
+    "index.ts",
     "test",
     "README.md",
     "README.zh-CN.md",
@@ -33,22 +37,17 @@
     "access": "public"
   },
   "scripts": {
-    "test": "node test/pi-purge.test.mjs && node test/pi-purge-env-source.test.mjs"
+    "test": "node test/purge.test.mjs && node test/purge-env-source.test.mjs"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.80.0 <2"
+    "@opencode/plugin": ">=2.1.4 <3"
   },
   "peerDependenciesMeta": {
-    "@earendil-works/pi-coding-agent": {
+    "@opencode/plugin": {
       "optional": true
     }
   },
   "engines": {
     "node": ">=22.19.0"
-  },
-  "pi": {
-    "extensions": [
-      "./extensions/pi-purge.ts"
-    ]
   }
 }
