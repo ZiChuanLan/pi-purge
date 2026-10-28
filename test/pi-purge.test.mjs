@@ -114,12 +114,21 @@ try {
 	assert.ok(appended.includes("Pi documentation (read only"), "append 不动文档段");
 	assert.ok(appended.includes("<project_context>"), "append 不动项目上下文");
 
+	// omp 的 systemPrompt 是 string[]：拼接结果不能变成逗号串
+	const omp = (await before({ systemPrompt: ["HOST IDENTITY", "SECOND BLOCK"], systemPromptOptions: { cwd: "H:/WorkSpace" } }, ctx)).systemPrompt;
+	assert.ok(omp.includes("HOST IDENTITY\n\nSECOND BLOCK"), "omp 数组按块拼接，不用逗号");
+	assert.ok(!omp.includes("HOST IDENTITY,SECOND BLOCK"), "omp 数组不得退化为逗号串");
+
 	await cmd.handler("mode strict", ctx);
 	const strict = (await inject()).systemPrompt;
 	for (const gone of ["Available tools:", "Guidelines:", "<project_context>", "Pi documentation"]) {
 		assert.ok(!strict.includes(gone), `strict 丢掉宿主段: ${gone}`);
 	}
 	assert.ok(strict.endsWith("Current working directory: H:/WorkSpace"), "strict 只留 cwd");
+
+	// omp 事件不带 cwd：退回进程工作目录，而不是丢掉 strict 的 cwd
+	const ompStrict = (await before({ systemPrompt: ["HOST IDENTITY"] }, ctx)).systemPrompt;
+	assert.ok(ompStrict.endsWith(`Current working directory: ${process.cwd().replace(/\\/g, "/")}`), "omp 无 cwd 时用 process.cwd() 兜底");
 
 	// 5. 换源失败：报错带原因 + 回滚到内嵌
 	await cmd.handler("source C:/definitely/not/here.md", ctx);

@@ -62,6 +62,15 @@ const HOST_DOCS_START = "Pi documentation (read only when the user asks about pi
 const HOST_DOCS_END = "(e.g., tui.md for TUI API details)";
 
 /**
+ * pi 的 before_agent_start 给 string，omp 给 string[]；统一成一块文本。
+ * 直接拼接数组会走 Array.toString()，把每段之间变成逗号。
+ */
+function systemText(value: unknown): string {
+	if (Array.isArray(value)) return value.filter((block): block is string => typeof block === "string").join("\n\n");
+	return typeof value === "string" ? value : "";
+}
+
+/**
  * 从系统提示词里切掉宿主身份句和 pi 文档段。
  * 两处都用固定文案定位，匹配不到就原样返回 —— pi 升级改文案时退化为 append，
  * 而不是把整段提示词切坏。
@@ -136,13 +145,15 @@ export default function piPurge(pi: ExtensionAPI) {
 	pi.on("before_agent_start", async (event) => {
 		if (!enabled || body.length === 0) return;
 
-		let host = event.systemPrompt;
+		const hostText = systemText(event.systemPrompt);
+		let host = hostText;
 		if (mode === "strict") {
 			// 等价 dsh 的 strict baseline：宿主提示词整段丢掉，只留工作目录。
 			// 工具 schema 走 API 的 tools 参数，不依赖这段文字。
-			const cwd = event.systemPromptOptions?.cwd;
+			// omp 的事件不带 systemPromptOptions，用进程 cwd 兜底。
+			const cwd = event.systemPromptOptions?.cwd ?? process.cwd();
 			host = cwd ? `Current working directory: ${String(cwd).replace(/\\/g, "/")}` : "";
-			const cut = stripHostPersona(event.systemPrompt);
+			const cut = stripHostPersona(hostText);
 			lastCut = { identity: cut.identity, docs: cut.docs, at: Date.now() };
 		} else if (mode === "replace") {
 			const cut = stripHostPersona(host);
