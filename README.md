@@ -11,7 +11,7 @@ With it off, nothing changes — no prompt rewrite, no disk reads. pi behaves ex
 ## Install
 
 ```bash
-FULL:pi install git:github.com/ZiChuanLan/pi-purge@ffafeb9
+pi install git:github.com/ZiChuanLan/pi-purge@ffafeb9
 pi install npm:pi-purge
 ```
 
