@@ -134,6 +134,13 @@ Also prohibited: unauthorized penetration or attack against public or private in
 
 ## License
 
+---
+
+提示词仓库
+https://github.com/ZiChuanLan/some-magic
+
+---
+
 MIT
 
 ---
