@@ -2,3 +2,7 @@ node_modules/
 *.tgz
 .DS_Store
 .msg.txt
+# 运行时生成物与本地实验现场（.sandbox 里可能有含明文 key 的配置备份，绝不入库）
+.sandbox/
+dist/
+.tmp-*
