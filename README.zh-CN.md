@@ -1,6 +1,6 @@
 # pi-purge
 
-[English](README.md) | 中文
+[English](README.md) | 中文 | [日本語](README.ja.md)
 
 [pi](https://github.com/earendil-works/pi-coding-agent) 的系统提示词实验扩展：`/purge` 用来切换一轮会话到底带哪套系统提示词 —— pi 自带的、精简过的，或者只发一份人设提示词。
 
