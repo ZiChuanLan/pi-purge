@@ -8,6 +8,10 @@ It is meant for prompt engineering work: comparing how the same request behaves 
 
 With it off, nothing changes — no prompt rewrite, no disk reads. pi behaves exactly as if the extension were not installed.
 
+## Not Only PI？
+
+https://github.com/ZiChuanLan/agent-purge
+
 ## Install
 
 ```bash
