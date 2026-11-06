@@ -8,6 +8,9 @@
 
 关掉时什么都不变：不改提示词、不读盘，行为与没装这个扩展完全一致。
 
+## 希望一键管理其他agent？
+https://github.com/ZiChuanLan/agent-purge
+
 ## 安装
 
 ```bash
