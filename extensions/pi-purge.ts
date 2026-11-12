@@ -44,7 +44,7 @@ const HINT_SOURCE = join(homedir(), ".dsh", "prompt-inject.md");
  */
 const ENV_SOURCE = process.env.PI_PURGE_SOURCE?.trim() || "";
 
-type Mode = "strict" | "replace" | "append";
+type Mode = "strict" | "replace" | "append" | "fallback";
 
 // 会话级状态：只活在内存里，pi 退出即失，绝不跨会话 / 跨进程泄漏
 let enabled = false;
@@ -76,6 +76,18 @@ const HOST_IDENTITY_RE = /^You are an? \S[^\n]{0,160}?coding agent harness\./m;
 const HOST_DOCS_TAGS = ["<docs>", "</docs>"];
 const HOST_DOCS_START = "Pi documentation (read only when the user asks about ";
 const HOST_DOCS_ENDS = ["following related cross-references.", "(e.g., tui.md for TUI API details)"];
+
+/** 会话真实 cwd；omp 不带 systemPromptOptions 时退回进程 cwd。写法对齐 pi 自己的 posix 风格。 */
+function cwdOf(event: { systemPromptOptions?: { cwd?: string } }): string {
+	return String(event.systemPromptOptions?.cwd ?? process.cwd()).replace(/\\/g, "/");
+}
+
+/** `{{cwd}}` 插值：人设里想点名工作目录时用；拿不到 cwd 就把占位符连同周边空白收掉。 */
+function interpolate(text: string, cwd: string): string {
+	if (!text.includes("{{cwd}}")) return text;
+	if (!cwd) return text.replace(/[ \t]*\{\{cwd\}\}[ \t]*/g, " ").replace(/[ \t]+\n/g, "\n");
+	return text.split("{{cwd}}").join(cwd);
+}
 
 /**
  * pi 的 before_agent_start 给 string，omp 给 string[]；统一成一块文本。
@@ -186,22 +198,26 @@ export default function piPurge(pi: ExtensionAPI) {
 	pi.on("before_agent_start", async (event) => {
 		if (!enabled || body.length === 0) return;
 
+		// dsh-purge 的 fallback（它自己的默认策略）：只有存在用户注入内容时才动宿主提示词。
+		// 对内嵌示例来说「没有用户内容」，于是整轮原样放行 —— 装了插件但没换源的会话不受影响。
+		if (mode === "fallback" && source === EMBEDDED) return;
+
+		const cwd = cwdOf(event);
+		const persona = interpolate(body, cwd);
 		const hostText = systemText(event.systemPrompt);
 		let host = hostText;
 		if (mode === "strict") {
 			// 等价 dsh 的 strict baseline：宿主提示词整段丢掉，只留工作目录。
 			// 工具 schema 走 API 的 tools 参数，不依赖这段文字。
-			// omp 的事件不带 systemPromptOptions，用进程 cwd 兜底。
-			const cwd = event.systemPromptOptions?.cwd ?? process.cwd();
-			host = cwd ? `Current working directory: ${String(cwd).replace(/\\/g, "/")}` : "";
+			host = cwd ? `Current working directory: ${cwd}` : "";
 			const cut = stripHostPersona(hostText);
 			lastCut = { identity: cut.identity, docs: cut.docs, at: Date.now() };
-		} else if (mode === "replace") {
+		} else if (mode === "replace" || mode === "fallback") {
 			const cut = stripHostPersona(host);
 			host = cut.text;
 			lastCut = { identity: cut.identity, docs: cut.docs, at: Date.now() };
 		}
-		return { systemPrompt: host.length > 0 ? `${body}\n\n${host}` : body };
+		return { systemPrompt: host.length > 0 ? `${persona}\n\n${host}` : persona };
 	});
 
 	pi.registerCommand("purge", {
@@ -225,7 +241,13 @@ export default function piPurge(pi: ExtensionAPI) {
 						? "尚未运行过一轮"
 						: `身份段 ${lastCut.identity ? "已切除" : "未匹配"} / pi 文档段 ${lastCut.docs ? "已切除" : "未匹配"}`;
 				const modeLabel =
-					mode === "strict" ? "strict（只留人设+工作目录）" : mode === "replace" ? "replace（清宿主身份段）" : "append（只挂头部）";
+					mode === "strict"
+						? "strict（只留人设+工作目录）"
+						: mode === "replace"
+							? "replace（清宿主身份段）"
+							: mode === "fallback"
+								? "fallback（有外部人设才清宿主身份段）"
+								: "append（只挂头部）";
 				return [
 					`状态: ${enabled ? "开启" : "关闭"}（仅本会话）`,
 					`模式: ${modeLabel}`,
@@ -267,9 +289,9 @@ export default function piPurge(pi: ExtensionAPI) {
 				}
 				case "mode": {
 					const wanted = arg.toLowerCase();
-					if (wanted !== "strict" && wanted !== "replace" && wanted !== "append") {
+					if (wanted !== "strict" && wanted !== "replace" && wanted !== "append" && wanted !== "fallback") {
 						return notify(
-							`当前模式: ${mode}\n用法: /purge mode strict|replace|append\nstrict  = 只发人设 + 工作目录（破限最彻底）\nreplace = 清 pi 身份段与文档段\nappend  = 只把人设挂头部`,
+							`当前模式: ${mode}\n用法: /purge mode strict|replace|fallback|append\nstrict   = 只发人设 + 工作目录（破限最彻底）\nreplace  = 清 pi 身份段与文档段\nfallback = 仅当人设来自外部文件时才清（内嵌示例不动宿主提示词）\nappend   = 只把人设挂头部`,
 							"error",
 						);
 					}

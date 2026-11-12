@@ -163,6 +163,28 @@ try {
 	const driftedOut = (await inject(drifted)).systemPrompt;
 	assert.ok(!driftedOut.includes("orbiting inside pi"), "模板兜底命中未登记的新措辞");
 
+	// 4d. fallback（上游 dsh-purge 自己的默认策略）：内嵌示例不算用户注入 → 整轮放行
+	await cmd.handler("mode fallback", ctx);
+	assert.equal(await inject(REAL_PI_PROMPT_152), undefined, "fallback + 内嵌示例不碰宿主提示词");
+	await cmd.handler("status", ctx);
+	assert.match(lastNote(), /fallback/, "status 标出 fallback");
+
+	// 4e. fallback + 外部人设 ⇒ 等同 replace；{{cwd}} 按会话真实目录插值
+	const FB_DIR = mkdtempSync(join(tmpdir(), "pi-purge-fb-"));
+	const FB = join(FB_DIR, "p.md");
+	try {
+		writeFileSync(FB, "PERSONA in {{cwd}}\nend");
+		await cmd.handler(`source ${FB}`, ctx);
+		const fb = (await inject()).systemPrompt;
+		assert.ok(fb.startsWith("PERSONA in H:/WorkSpace"), "{{cwd}} 插值成 posix 路径");
+		assert.ok(!fb.includes("You are an expert coding assistant"), "fallback + 外部人设 ⇒ 清身份句");
+		assert.ok(!fb.includes("Pi documentation (read only"), "fallback + 外部人设 ⇒ 清文档段");
+		assert.ok(fb.includes("Available tools:"), "fallback 保留工具段");
+	} finally {
+		rmSync(FB_DIR, { recursive: true, force: true });
+	}
+	await cmd.handler("source embedded", ctx);
+
 	await cmd.handler("mode append", ctx);
 	const appended = (await inject()).systemPrompt;
 	assert.ok(appended.includes("You are an expert coding assistant"), "append 不动宿主身份句");
@@ -230,7 +252,7 @@ try {
 	// 9. ★ 无盘副作用：全程没写状态文件
 	assert.deepEqual(readdirSync(AGENT_DIR), [], "不写任何状态文件");
 
-	console.log("OK — 11 组断言全部通过");
+	console.log("OK — 13 组断言全部通过");
 	console.log("内嵌人设注入后:", sp.length, "字符");
 } finally {
 	rmSync(AGENT_DIR, { recursive: true, force: true });
