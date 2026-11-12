@@ -51,9 +51,12 @@ https://github.com/ZiChuanLan/agent-purge
 | --- | --- | --- |
 | `append` | 你的提示词 + pi 原提示词（一字不改） | 对照组：基线行为，加一层自己的指令 |
 | `replace` | 你的提示词 + 去掉「助手身份句」和「内置文档段」的 pi 提示词，工具列表 / Guidelines / 项目上下文保留 | 想测量宿主框架措辞的影响，又不想丢工具上下文 |
+| `fallback` | 人设来自**外部文件**时按 `replace` 处理；仍用内嵌示例时整轮原样放行，不碰 pi 提示词 | 想「装了但不打扰」：平时跑原生，`/purge source` 指向自己的文件后才接管。对齐上游 dsh-purge 的默认策略 |
 | `strict` | 你的提示词 + 仅 `Current working directory: …` | 想把人设/指令当成唯一变量隔离出来。这是默认模式 |
 
-`replace` 依赖固定文案定位那两段。pi 升级改措辞时它会原样保留提示词（退化成 `append`），而不是切错位置 —— `/purge status` 会显示 `身份段 未匹配`。`strict` 不做任何匹配，跨 pi 版本行为一致。omp 传的是提示词块数组，没有这些 pi 专用锚点，`replace` 同样会退化成 `append`；要彻底丢掉宿主框架用 `strict`。
+`replace` / `fallback` 靠锚点定位那两段：文档段优先按 `<docs>…</docs>` 整块切，身份句登记了 pi ≤1.4 与 ≥1.5.2 两代措辞，再落空还有单行模板兜底。锚点全不命中时它原样保留提示词（退化成 `append`），而不是切错位置 —— `/purge status` 会显示 `身份段 未匹配`。`strict` 不做任何匹配，跨 pi 版本行为一致。omp 传的是提示词块数组，没有这些 pi 专用锚点，`replace` 同样会退化成 `append`；要彻底丢掉宿主框架用 `strict`。
+
+人设正文里的 `{{cwd}}` 会换成会话真实工作目录（POSIX 写法）；`strict` 下同一条路径仍以 `Current working directory: …` 追加。
 
 工具 schema 走 API 的 `tools` 参数，不依赖系统提示词，所以三种模式下工具都正常可用，包括 `strict`。
 

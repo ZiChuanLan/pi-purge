@@ -52,9 +52,12 @@ That is all. A short example prompt ships inside the package, so a fresh install
 | --- | --- | --- |
 | `append` | Your prompt prepended to pi's prompt, unchanged. | You want a control run: baseline behavior plus your instructions on top. |
 | `replace` | Your prompt, then pi's prompt with its built-in assistant identity line and bundled documentation section removed. Tool list, guidelines, and project context stay. | You want to measure the effect of the harness framing without losing tool context. |
+| `fallback` | Behaves like `replace` only when the prompt came from an **external file**; with the bundled example the host prompt is left untouched for the whole turn. | You want "installed but unobtrusive": stock behavior by default, takeover only once `/purge source` points at your own file. Mirrors upstream dsh-purge's default policy. |
 | `strict` | Your prompt plus `Current working directory: …` only. | You want to isolate your instructions as a single variable. This is the default. |
 
-`replace` finds both sections by exact wording. If a pi update rewords them, it leaves the prompt intact rather than cutting the wrong text — `/purge status` then reports `身份段 未匹配` (identity line not found) and behavior falls back to `append`. `strict` does no matching at all, so it behaves the same across pi versions. On omp, which supplies a prompt block array without these pi-specific anchors, `replace` also leaves the host prompt intact; use `strict` when the harness framing must be gone.
+`replace` / `fallback` locate both sections by anchors: the documentation block is cut as a whole `<docs>…</docs>` span, and the identity line has entries for both pi ≤1.4 and ≥1.5.2 wording, with a single-line template as a last resort. If no anchor matches it leaves the prompt intact rather than cutting the wrong text — `/purge status` then reports `身份段 未匹配` (identity line not found) and behavior falls back to `append`. `strict` does no matching at all, so it behaves the same across pi versions. On omp, which supplies a prompt block array without these pi-specific anchors, `replace` also leaves the host prompt intact; use `strict` when the harness framing must be gone.
+
+`{{cwd}}` inside your prompt is replaced with the session's real working directory (POSIX form); under `strict` the same path is still appended as `Current working directory: …`.
 
 Tool schemas are passed through the API `tools` parameter rather than the system prompt, so tools keep working in every mode, including `strict`.
 

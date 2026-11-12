@@ -1,6 +1,6 @@
 {
   "name": "pi-purge",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "description": "pi extension: switch a session between pi's stock system prompt, a trimmed variant, and a bundled or custom persona prompt - for prompt-engineering experiments",
   "type": "module",
   "license": "MIT",
