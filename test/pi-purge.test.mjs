@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -30,6 +30,42 @@ Pi documentation (read only when the user asks about pi itself, its SDK, extensi
 - When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md)
 - When working on pi topics, read the docs and examples
 - Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)
+
+<project_context>
+
+Project-specific instructions and guidelines:
+
+<project_instructions path="C:/AGENTS.md">
+# Rules
+</project_instructions>
+
+</project_context>
+
+Current working directory: H:/WorkSpace`;
+
+// pi 1.5.2 起：preamble 换了措辞，各段包进 <tools>/<rules>/<docs> 标签，cwd 仍收尾
+const REAL_PI_PROMPT_152 = `You are a coding assistant running inside pi, a coding agent harness. Help users inspect files, run commands, and modify code.
+
+<tools>
+- read: Read file contents with line numbers
+- bash: Run shell commands
+
+Additional tools may be available.
+</tools>
+
+<rules>
+- Use bash for file operations like ls, rg, find
+- Be concise in your responses
+</rules>
+
+<docs>
+Pi documentation (read only when the user asks about the harness itself, its SDK, extensions, themes, skills, or TUI):
+- Main documentation: C:/pi/README.md
+- Additional docs: C:/pi/docs
+- Examples: C:/pi/examples (extensions, custom tools, SDK)
+- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory
+- Before implementing harness changes, read the relevant docs and examples in full, following related cross-references.
+</docs>
 
 <project_context>
 
@@ -108,6 +144,25 @@ try {
 	await cmd.handler("status", ctx);
 	assert.match(lastNote(), /身份段 已切除 \/ pi 文档段 已切除/, "status 反映切除实况");
 
+	// 4b. ★ pi 1.5.2 的新文案 + <docs> 包裹：锚点必须仍然命中
+	const replaced152 = (await inject(REAL_PI_PROMPT_152)).systemPrompt;
+	assert.ok(!replaced152.includes("You are a coding assistant running inside pi"), "1.5.2 身份句被切除");
+	assert.ok(!replaced152.includes("Pi documentation (read only"), "1.5.2 文档段被切除");
+	assert.ok(!replaced152.includes("<docs>") && !replaced152.includes("</docs>"), "1.5.2 连 <docs> 标签一起切掉，不留空壳");
+	for (const keep of ["<tools>", "<rules>", "<project_context>", "Current working directory: H:/WorkSpace"]) {
+		assert.ok(replaced152.includes(keep), `1.5.2 replace 保留: ${keep}`);
+	}
+	await cmd.handler("status", ctx);
+	assert.match(lastNote(), /身份段 已切除 \/ pi 文档段 已切除/, "1.5.2 的 status 也报已切除");
+
+	// 4c. 锚点再被 pi 改措辞时，模板兜底仍能定位身份句
+	const drifted = REAL_PI_PROMPT_152.replace(
+		"You are a coding assistant running inside pi, a coding agent harness.",
+		"You are a meticulous coding assistant orbiting inside pi, a coding agent harness.",
+	);
+	const driftedOut = (await inject(drifted)).systemPrompt;
+	assert.ok(!driftedOut.includes("orbiting inside pi"), "模板兜底命中未登记的新措辞");
+
 	await cmd.handler("mode append", ctx);
 	const appended = (await inject()).systemPrompt;
 	assert.ok(appended.includes("You are an expert coding assistant"), "append 不动宿主身份句");
@@ -141,6 +196,26 @@ try {
 	await cmd.handler("source embedded", ctx);
 	assert.match(lastNote(), /人设: 内嵌/, "source embedded 切回内嵌");
 
+	// 6b. /purge reload：改完外部文件立刻重读，且不动开关状态
+	const PERS_DIR = mkdtempSync(join(tmpdir(), "pi-purge-persona-"));
+	const PERS = join(PERS_DIR, "persona.md");
+	try {
+		writeFileSync(PERS, "FIRST VERSION");
+		await cmd.handler(`source ${PERS}`, ctx);
+		assert.match(lastNote(), /人设已切换/, "外部文件加载成功");
+		writeFileSync(PERS, "SECOND VERSION, LONGER");
+		await cmd.handler("reload", ctx);
+		assert.equal(notes.at(-1)[0], "info", "reload 不报错");
+		assert.match(lastNote(), /已重新读取/, "reload 回显已重读");
+		assert.ok(lastNote().includes(PERS), "reload 回显当前来源");
+		const reloaded = (await inject()).systemPrompt;
+		assert.ok(reloaded.includes("SECOND VERSION, LONGER"), "reload 读到新内容");
+		assert.equal(statuses.at(-1), "PURGE ON", "reload 不改变开关状态");
+	} finally {
+		rmSync(PERS_DIR, { recursive: true, force: true });
+	}
+	await cmd.handler("source embedded", ctx);
+
 	// 7. 自定义 SYSTEM.md（没有身份句/文档段）不能切坏
 	const custom = "You are my own assistant.\n\nCurrent working directory: H:/WorkSpace";
 	await cmd.handler("mode append", ctx);
@@ -155,7 +230,7 @@ try {
 	// 9. ★ 无盘副作用：全程没写状态文件
 	assert.deepEqual(readdirSync(AGENT_DIR), [], "不写任何状态文件");
 
-	console.log("OK — 9 组断言全部通过");
+	console.log("OK — 11 组断言全部通过");
 	console.log("内嵌人设注入后:", sp.length, "字符");
 } finally {
 	rmSync(AGENT_DIR, { recursive: true, force: true });

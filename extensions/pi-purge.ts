@@ -55,11 +55,27 @@ let loadError = "";
 // 上一轮实际切除情况，/purge status 用它回答"到底生效了没有"
 let lastCut = { identity: false, docs: false, at: 0 };
 
-/** pi 默认提示词里的宿主身份句（dist/core/system-prompt.js 模板首句）。 */
-const HOST_IDENTITY = "You are an expert coding assistant operating inside pi, a coding agent harness.";
-/** pi 文档段的起点与终点标记；任一处匹配不到就整段跳过，绝不猜边界。 */
-const HOST_DOCS_START = "Pi documentation (read only when the user asks about pi itself";
-const HOST_DOCS_END = "(e.g., tui.md for TUI API details)";
+/**
+ * pi 默认提示词里的宿主身份句（dist/core/system-prompt.js 的 preamble 首句）。
+ * 措辞随 pi 版本变过，按"新在前"排列，逐个试；都落空再走下面的模板兜底。
+ *   ≤1.4.x: "You are an expert coding assistant operating inside pi, ..."
+ *   ≥1.5.2: "You are a coding assistant running inside pi, ..."
+ */
+const HOST_IDENTITY_LINES = [
+	"You are a coding assistant running inside pi, a coding agent harness.",
+	"You are an expert coding assistant operating inside pi, a coding agent harness.",
+];
+/** 模板兜底：只认单行、以 harness 句收尾（同一行后面还可能跟别的句子）。 */
+const HOST_IDENTITY_RE = /^You are an? \S[^\n]{0,160}?coding agent harness\./m;
+
+/**
+ * pi 文档段的边界。pi ≥1.5.2 把各段包进 <docs>…</docs>，用标签最稳；
+ * 更早的版本是裸文本，退回到固定文案（起点一致，终点两代各一条）。
+ * 任一锚点匹配不到就整段跳过，绝不猜边界。
+ */
+const HOST_DOCS_TAGS = ["<docs>", "</docs>"];
+const HOST_DOCS_START = "Pi documentation (read only when the user asks about ";
+const HOST_DOCS_ENDS = ["following related cross-references.", "(e.g., tui.md for TUI API details)"];
 
 /**
  * pi 的 before_agent_start 给 string，omp 给 string[]；统一成一块文本。
@@ -70,38 +86,63 @@ function systemText(value: unknown): string {
 	return typeof value === "string" ? value : "";
 }
 
-/**
- * 从系统提示词里切掉宿主身份句和 pi 文档段。
- * 两处都用固定文案定位，匹配不到就原样返回 —— pi 升级改文案时退化为 append，
- * 而不是把整段提示词切坏。
- */
-function stripHostPersona(systemPrompt: string): { text: string; identity: boolean; docs: boolean } {
-	let text = systemPrompt;
-	let identity = false;
-	let docs = false;
+/** 从 startAt 所在行的行首切到 endMarker 所在行的行尾；标记缺失返回 null。 */
+function dropThroughLine(text: string, startAt: number, endMarker: string, from: number): string | null {
+	const endAt = text.indexOf(endMarker, from);
+	if (endAt === -1) return null;
+	let start = startAt;
+	while (start > 0 && text[start - 1] === "\n") start -= 1;
+	const lineEnd = text.indexOf("\n", endAt + endMarker.length);
+	const end = lineEnd === -1 ? text.length : lineEnd + 1;
+	return text.slice(0, start) + text.slice(end);
+}
 
-	const identityAt = text.indexOf(HOST_IDENTITY);
-	if (identityAt !== -1) {
-		const lineEnd = text.indexOf("\n", identityAt);
-		const cutEnd = lineEnd === -1 ? text.length : lineEnd + 1;
-		text = text.slice(0, identityAt) + text.slice(cutEnd);
-		identity = true;
+/** 切掉宿主身份句：先试历史措辞，再用模板兜底。都落空就原样返回。 */
+function stripIdentityLine(text: string): { text: string; found: boolean } {
+	let at = -1;
+	for (const line of HOST_IDENTITY_LINES) {
+		at = text.indexOf(line);
+		if (at !== -1) break;
+	}
+	if (at === -1) {
+		const match = HOST_IDENTITY_RE.exec(text);
+		at = match?.index ?? -1;
+	}
+	if (at === -1) return { text, found: false };
+	const lineEnd = text.indexOf("\n", at);
+	const cutEnd = lineEnd === -1 ? text.length : lineEnd + 1;
+	return { text: text.slice(0, at) + text.slice(cutEnd), found: true };
+}
+
+/** 切掉 pi 文档段：<docs> 标签优先，退回固定文案。匹配不到原样返回。 */
+function stripDocsBlock(text: string): { text: string; found: boolean } {
+	const [open, close] = HOST_DOCS_TAGS;
+	const tagAt = text.indexOf(open);
+	if (tagAt !== -1) {
+		const cut = dropThroughLine(text, tagAt, close, tagAt + open.length);
+		if (cut !== null) return { text: cut, found: true };
 	}
 
 	const docsAt = text.indexOf(HOST_DOCS_START);
 	if (docsAt !== -1) {
-		const docsEndAt = text.indexOf(HOST_DOCS_END, docsAt + HOST_DOCS_START.length);
-		if (docsEndAt !== -1) {
-			let start = docsAt;
-			while (start > 0 && text[start - 1] === "\n") start -= 1;
-			const lineEnd = text.indexOf("\n", docsEndAt);
-			const end = lineEnd === -1 ? text.length : lineEnd + 1;
-			text = text.slice(0, start) + text.slice(end);
-			docs = true;
+		for (const endMarker of HOST_DOCS_ENDS) {
+			const cut = dropThroughLine(text, docsAt, endMarker, docsAt + HOST_DOCS_START.length);
+			if (cut !== null) return { text: cut, found: true };
 		}
 	}
 
-	return { text, identity, docs };
+	return { text, found: false };
+}
+
+/**
+ * 从系统提示词里切掉宿主身份句和 pi 文档段。
+ * 锚点覆盖 pi ≤1.4 与 ≥1.5.2 两代文案，仍匹配不到就原样返回 ——
+ * pi 升级再改措辞时退化为 append，而不是把整段提示词切坏。
+ */
+function stripHostPersona(systemPrompt: string): { text: string; identity: boolean; docs: boolean } {
+	const identity = stripIdentityLine(systemPrompt);
+	const docs = stripDocsBlock(identity.text);
+	return { text: docs.text, identity: identity.found, docs: docs.found };
 }
 
 export default function piPurge(pi: ExtensionAPI) {
@@ -166,7 +207,7 @@ export default function piPurge(pi: ExtensionAPI) {
 	pi.registerCommand("purge", {
 		description: "会话级破限开关：清掉宿主身份段并把人设挂到系统提示词头部",
 		getArgumentCompletions: (prefix: string) =>
-			["on", "off", "status", "mode", "source"]
+			["on", "off", "status", "mode", "source", "reload"]
 				.filter((value) => value.startsWith(prefix))
 				.map((value) => ({ value, label: value })),
 		handler: async (args: string, ctx) => {
@@ -219,6 +260,11 @@ export default function piPurge(pi: ExtensionAPI) {
 					return turnOff();
 				case "status":
 					return notify(describe());
+				case "reload": {
+					// 只重读正文，不改开关状态：改完外部文件想立刻生效用这个
+					if (!reload()) return notify(`重新读取失败：${loadError}`, "error");
+					return notify(`已重新读取。\n${describe()}`);
+				}
 				case "mode": {
 					const wanted = arg.toLowerCase();
 					if (wanted !== "strict" && wanted !== "replace" && wanted !== "append") {
@@ -250,7 +296,7 @@ export default function piPurge(pi: ExtensionAPI) {
 					return notify(`人设已切换，正文 ${body.length} 字符。\n${describe()}`);
 				}
 				default:
-					return notify(`未知子命令: ${cmd}\n用法: /purge [on|off|status|mode|source]`);
+					return notify(`未知子命令: ${cmd}\n用法: /purge [on|off|status|mode|source|reload]`);
 			}
 		},
 	});
